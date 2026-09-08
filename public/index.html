@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Our Budgets">
@@ -66,13 +66,19 @@
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 img{max-width:100%}
-html{-webkit-text-size-adjust:100%}
+/* Behave like an app, not a page: no rubber-band drag, no double-tap
+   zoom, no text-size inflation when the phone rotates. */
+html{-webkit-text-size-adjust:100%;overscroll-behavior:none}
 body{
   background:var(--ground);color:var(--ink);
   font-family:var(--f-ui);font-size:15px;line-height:1.45;
   -webkit-font-smoothing:antialiased;
   margin:0;min-height:100dvh;
+  overscroll-behavior:none;
+  touch-action:manipulation;
 }
+/* Scrolling a sheet must not drag the page behind it. */
+.sheet,.chips{overscroll-behavior:contain}
 /* Ambient light for the glass to pick up. Fixed, so panes refract
    different colour as the page scrolls beneath them. */
 body::before{
@@ -703,7 +709,8 @@ const state = {
   view: NOW_MONTH,
   tab: "today",
   draft: { type: "expense", cat: "groceries", custom: "" },
-  online: false
+  online: false,
+  rev: 0
 };
 
 const LS_KEY = "pocket-ledger-v1";
@@ -727,7 +734,29 @@ function debounce(key, fn){ clearTimeout(timers[key]); timers[key] = setTimeout(
 
 // The whole state goes up as one document. Writes are debounced so a burst of
 // edits is one request, and localStorage always holds the latest either way.
-async function sendState(){
+const snapshot = () => ({ settings: state.settings, months: state.months, debts: state.debts });
+
+// Another device saved while this one was editing. Union the entries rather
+// than picking a winner, so neither device's additions are thrown away.
+function mergeRemote(remote){
+  const months = {};
+  const keys = new Set([...Object.keys(remote.months || {}), ...Object.keys(state.months || {})]);
+  for (const k of keys) {
+    const byId = new Map();
+    for (const t of (remote.months && remote.months[k] && remote.months[k].txns) || []) byId.set(t.id, t);
+    for (const t of (state.months[k] && state.months[k].txns) || []) byId.set(t.id, t);
+    months[k] = { txns: [...byId.values()] };
+  }
+  const debts = new Map();
+  for (const d of remote.debts || []) debts.set(d.id, d);
+  for (const d of state.debts || []) debts.set(d.id, d);
+
+  state.months = months;
+  state.debts = [...debts.values()];
+  state.settings = Object.assign({}, DEFAULT_SETTINGS, remote.settings, state.settings);
+}
+
+async function sendState(retry){
   saveLocal();
   if (!state.online) return;
   clearTimeout(timers.push);
@@ -735,10 +764,25 @@ async function sendState(){
     const res = await fetch("/api/data", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ settings: state.settings, months: state.months, debts: state.debts }),
+      body: JSON.stringify({ rev: state.rev, data: snapshot() }),
     });
     if (res.status === 401) { showGate(); return; }
+
+    if (res.status === 409) {
+      const server = await res.json();
+      if (retry) { setSync("out of sync"); return; }
+      mergeRemote(server.data || {});
+      state.rev = server.rev;
+      saveLocal();
+      render();
+      await sendState(true);
+      toast("Merged changes from another device.");
+      return;
+    }
+
     if (!res.ok) throw new Error(await res.text());
+    const body = await res.json();
+    state.rev = body.rev;
     setSync("synced");
   } catch (e) {
     setSync("on this device");
@@ -1813,11 +1857,15 @@ async function pullState(){
     }
     if (!res.ok) throw new Error("bad response");
 
-    const remote = await res.json();
+    const body = await res.json();
     state.online = true;
     setSync("synced");
 
+    const remote = body && body.data;
     if (remote && remote.settings) {
+      // Nothing changed on the server since our copy — leave local edits alone.
+      if (body.rev === state.rev) return;
+      state.rev = body.rev;
       state.settings = Object.assign({}, DEFAULT_SETTINGS, remote.settings);
       state.months = remote.months || {};
       state.debts = Array.isArray(remote.debts) ? remote.debts : [];
@@ -1825,11 +1873,29 @@ async function pullState(){
       saveLocal();
       render();
     } else {
+      state.rev = 0;
       pushState(); // first run: seed the server with what is on this device
     }
   } catch (e) {
     setSync("on this device");
   }
+}
+
+// Coming back to the app is when another device's changes matter most.
+let lastPull = Date.now();
+function pullIfStale(){
+  if (!state.online || document.hidden) return;
+  if (Date.now() - lastPull < 4000) return;
+  lastPull = Date.now();
+  pullState();
+}
+document.addEventListener("visibilitychange", pullIfStale);
+window.addEventListener("focus", pullIfStale);
+
+// Safari honours user-scalable=no only in some contexts; these are what
+// actually stop a pinch from zooming the app on iPhone.
+for (const ev of ["gesturestart", "gesturechange", "gestureend"]) {
+  document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
 }
 
 /* ---------------- CSV import ---------------- */
