@@ -225,6 +225,9 @@ main{display:flex;flex-direction:column}
   background:var(--accent);border-color:transparent;color:var(--accent-ink);
   box-shadow:0 0 22px var(--accent-glow);
 }
+/* Dashed, so it reads as "make one" rather than another envelope. */
+.chip-custom{background:transparent;border-style:dashed;border-color:var(--edge-bright);color:var(--ink-2)}
+.chip-custom[aria-pressed="true"]{border-style:solid}
 .row{display:flex;gap:10px}
 .input{
   width:100%;background:var(--glass-2);border:1.5px solid var(--edge);
@@ -684,7 +687,7 @@ const state = {
   debts: [],
   view: NOW_MONTH,
   tab: "today",
-  draft: { type: "expense", cat: "groceries" },
+  draft: { type: "expense", cat: "groceries", custom: "" },
   online: false
 };
 
@@ -768,13 +771,32 @@ function catColor(id){
   const i = state.settings.categories.findIndex(c => c.id === id);
   return "var(" + CAT_VARS[(i < 0 ? 7 : i) % CAT_VARS.length] + ")";
 }
+
+// A one-off category carries its name on the entry itself instead of
+// becoming an envelope. Kept ones are promoted and lose the label.
+const CUSTOM = "__custom";
+function txnLabel(x){
+  if (x.type === "income") return "Income";
+  return x.custom || catName(x.cat);
+}
+function txnColor(x){ return x.custom ? "var(--accent)" : catColor(x.cat); }
+// One-off spending is bucketed under "~name" so the month breakdown can
+// still show it by name without inventing an envelope for it.
+const customKey = (name) => "~" + name;
+function bucketName(k){ return k.charAt(0) === "~" ? k.slice(1) : catName(k); }
+function bucketColor(k){ return k.charAt(0) === "~" ? "var(--accent)" : catColor(k); }
+
 function totals(key){
   const t = txnsFor(key);
   let spent = 0, earned = 0;
   const byCat = {};
   for (const x of t) {
     if (x.type === "income") { earned += x.amt; }
-    else { spent += x.amt; byCat[x.cat] = (byCat[x.cat] || 0) + x.amt; }
+    else {
+      spent += x.amt;
+      const k = x.custom ? customKey(x.custom) : x.cat;
+      byCat[k] = (byCat[k] || 0) + x.amt;
+    }
   }
   const budget = state.settings.categories.reduce((s, c) => s + (Number(c.budget) || 0), 0);
   return { spent, earned, byCat, budget };
@@ -862,13 +884,38 @@ function render(){
 
 function renderChips(){
   const cats = state.settings.categories;
-  if (!cats.some(c => c.id === state.draft.cat)) state.draft.cat = cats.length ? cats[0].id : "other";
+  const onCustom = state.draft.cat === CUSTOM && state.draft.custom;
+  if (!onCustom && !cats.some(c => c.id === state.draft.cat)) {
+    state.draft.cat = cats.length ? cats[0].id : "other";
+  }
   const isIncome = state.draft.type === "income";
   $("add-chips").hidden = isIncome;
   $("add-chips").innerHTML = cats.map(c =>
     '<button type="button" class="chip" data-cat="' + esc(c.id) + '" aria-pressed="' + (c.id === state.draft.cat) + '">' + esc(c.name) + "</button>"
-  ).join("");
+  ).join("") +
+    '<button type="button" class="chip chip-custom" data-cat="' + CUSTOM + '" aria-pressed="' + Boolean(onCustom) + '">' +
+    (onCustom ? esc(state.draft.custom) : "+ Custom") + "</button>";
   $("add-btn").textContent = isIncome ? "Add income" : "Add expense";
+}
+
+function openCustomSheet(){
+  openSheet(
+    "<h2>Custom category</h2>" +
+    '<p class="hint">Name it for this entry. Nothing is added to your envelopes unless you choose to keep it.</p>' +
+    '<div class="grp"><label for="cu-name">Name</label>' +
+    '<input class="input" id="cu-name" maxlength="28" value="' + esc(state.draft.custom || "") + '" placeholder="e.g. Wedding gift"></div>' +
+    '<button class="btn wide" data-action="use-custom">Use it</button>'
+  );
+}
+
+// Asked once, right after the entry lands, while the choice is still in mind.
+function openKeepSheet(mkey, id, name){
+  openSheet(
+    "<h2>Keep " + esc(name) + "?</h2>" +
+    '<p class="hint">Keeping it adds an envelope you can set a monthly limit on. Otherwise it stays a label on this entry alone.</p>' +
+    '<div class="grp"><button class="btn wide" data-action="keep-custom" data-mkey="' + esc(mkey) + '" data-id="' + esc(id) + '">Keep it as an envelope</button></div>' +
+    '<button class="btn ghost wide" data-close="1">Just this once</button>'
+  );
 }
 
 function renderToday(){
@@ -915,8 +962,8 @@ function renderToday(){
     }
     const inc = x.type === "income";
     html += '<button class="txn" data-txn="' + esc(x.id) + '" data-mkey="' + esc(key) + '">' +
-      '<span class="dot" style="background:' + (inc ? "var(--good)" : catColor(x.cat)) + '"></span>' +
-      '<span class="txn-main"><span class="txn-cat">' + esc(inc ? "Income" : catName(x.cat)) + "</span>" +
+      '<span class="dot" style="background:' + (inc ? "var(--good)" : txnColor(x)) + '"></span>' +
+      '<span class="txn-main"><span class="txn-cat">' + esc(txnLabel(x)) + "</span>" +
       (x.note ? '<span class="txn-note">' + esc(x.note) + "</span>" : "") + "</span>" +
       '<span class="txn-amt num' + (inc ? " in" : "") + '">' + (inc ? "+" : "") + esc(money(x.amt)) + "</span></button>";
   }
@@ -1041,17 +1088,17 @@ function renderMonth(){
   $("chart-peak").textContent = peak > 0 ? "peak " + money0(peak) : "";
   $("chart").innerHTML = dailyChart(daily, peak, key);
 
-  // breakdown
-  const rows = state.settings.categories
-    .map(c => ({ c, v: byCat[c.id] || 0 }))
+  // breakdown — envelopes plus any one-off categories, by name
+  const rows = Object.keys(byCat)
+    .map(k => ({ k, v: byCat[k] }))
     .filter(r => r.v > 0)
     .sort((a, b) => b.v - a.v);
   const maxV = rows.length ? rows[0].v : 0;
   $("breakdown").innerHTML = rows.length
     ? rows.map(r =>
-        '<div class="brk-row"><span class="brk-name">' + esc(r.c.name) + "</span>" +
+        '<div class="brk-row"><span class="brk-name">' + esc(bucketName(r.k)) + "</span>" +
         '<span class="brk-val">' + esc(money(r.v)) + " · " + Math.round((r.v / spent) * 100) + "%</span>" +
-        '<span class="brk-track"><i style="width:' + ((r.v / maxV) * 100).toFixed(1) + "%;background:" + catColor(r.c.id) + '"></i></span></div>'
+        '<span class="brk-track"><i style="width:' + ((r.v / maxV) * 100).toFixed(1) + "%;background:" + bucketColor(r.k) + '"></i></span></div>'
       ).join("")
     : '<div class="empty"><b>No spending recorded</b>Entries you add for ' + esc(monthTitle(key)) + " will break down here.</div>";
 }
@@ -1165,7 +1212,8 @@ function openTxnSheet(mkey, id){
   const t = txnsFor(mkey).find(x => x.id === id);
   if (!t) return;
   const opts = state.settings.categories.map(c =>
-    '<option value="' + esc(c.id) + '"' + (c.id === t.cat ? " selected" : "") + ">" + esc(c.name) + "</option>").join("");
+    '<option value="' + esc(c.id) + '"' + (c.id === t.cat ? " selected" : "") + ">" + esc(c.name) + "</option>").join("") +
+    (t.custom ? '<option value="' + CUSTOM + '" selected>' + esc(t.custom) + " (one-off)</option>" : "");
   openSheet(
     "<h2>Edit entry</h2>" +
     '<div class="grp"><label for="e-amt">Amount</label><input class="input num" id="e-amt" inputmode="decimal" value="' + esc(t.amt) + '"></div>' +
@@ -1333,18 +1381,29 @@ $("add-form").addEventListener("submit", (e) => {
   const amt = parseAmount($("amount").value);
   if (!amt) { $("amount").focus(); toast("Enter an amount first."); return; }
   const date = $("date").value || todayISO();
-  addTxn({
+  const isIncome = state.draft.type === "income";
+  const isCustom = !isIncome && state.draft.cat === CUSTOM && state.draft.custom;
+
+  const txn = {
     id: uid(),
     type: state.draft.type,
-    cat: state.draft.type === "income" ? "" : state.draft.cat,
+    cat: isIncome || isCustom ? "" : state.draft.cat,
     amt: amt,
     note: $("note").value.trim(),
     date: date
-  });
+  };
+  if (isCustom) txn.custom = state.draft.custom;
+
+  addTxn(txn);
   $("amount").value = "";
   $("note").value = "";
   $("amount").blur();
-  toast((state.draft.type === "income" ? "Income" : "Expense") + " added · " + money(amt));
+
+  if (isCustom) {
+    openKeepSheet(monthOf(date), txn.id, state.draft.custom);
+  } else {
+    toast((isIncome ? "Income" : "Expense") + " added · " + money(amt));
+  }
 });
 
 $("type-seg").addEventListener("click", (e) => {
@@ -1358,7 +1417,9 @@ $("type-seg").addEventListener("click", (e) => {
 $("add-chips").addEventListener("click", (e) => {
   const b = e.target.closest(".chip");
   if (!b) return;
+  if (b.dataset.cat === CUSTOM) { openCustomSheet(); return; }
   state.draft.cat = b.dataset.cat;
+  state.draft.custom = "";
   [...$("add-chips").children].forEach(x => x.setAttribute("aria-pressed", String(x === b)));
 });
 
@@ -1418,12 +1479,17 @@ function runAction(act){
     const amt = parseAmount($("e-amt").value);
     if (!amt) { fieldError("e-amt", "Enter an amount."); return; }
     const catSel = $("e-cat");
-    updateTxn(act.dataset.mkey, act.dataset.id, {
+    const chosen = catSel ? catSel.value : "";
+    const t = txnsFor(act.dataset.mkey).find(x => x.id === act.dataset.id);
+    const patch = {
       amt: amt,
-      cat: catSel ? catSel.value : "",
+      cat: chosen === CUSTOM ? "" : chosen,
       note: $("e-note").value.trim(),
       date: $("e-date").value || todayISO()
-    });
+    };
+    // Moving a one-off into a real envelope drops its label.
+    patch.custom = chosen === CUSTOM ? (t && t.custom) || "" : "";
+    updateTxn(act.dataset.mkey, act.dataset.id, patch);
     closeSheet();
     toast("Entry updated.");
   }
@@ -1473,6 +1539,52 @@ function runAction(act){
     closeSheet();
     const left = debtBalance(d);
     toast(left > 0 ? money(left) + " left on " + d.name : d.name + " is cleared.");
+  }
+
+  if (a === "use-custom") {
+    const name = $("cu-name").value.trim();
+    if (!name) { fieldError("cu-name", "Give this category a name."); return; }
+    const existing = state.settings.categories.find(c => c.name.toLowerCase() === name.toLowerCase());
+    if (existing) {
+      // Already an envelope — just select it rather than shadowing it.
+      state.draft.cat = existing.id;
+      state.draft.custom = "";
+      renderChips();
+      closeSheet();
+      toast("You already have a " + existing.name + " envelope.");
+      return;
+    }
+    state.draft.cat = CUSTOM;
+    state.draft.custom = name;
+    renderChips();
+    closeSheet();
+    return;
+  }
+
+  if (a === "keep-custom") {
+    const mkey = act.dataset.mkey;
+    const t = txnsFor(mkey).find(x => x.id === act.dataset.id);
+    if (!t || !t.custom) { closeSheet(); return; }
+    const name = t.custom;
+    const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 18) || "cat";
+    const catId = id + "-" + uid().slice(0, 4);
+
+    state.settings.categories.push({ id: catId, name: name, budget: 0 });
+    // Adopt every one-off already carrying this label, not just this entry.
+    for (const k of Object.keys(state.months)) {
+      for (const x of txnsFor(k)) {
+        if (x.custom === name) { x.cat = catId; delete x.custom; }
+      }
+    }
+    state.draft.cat = catId;
+    state.draft.custom = "";
+
+    persistSettings();
+    persistMonth(mkey);
+    render();
+    closeSheet();
+    toast(name + " added to your envelopes.");
+    return;
   }
 
   if (a === "open-import") { openImportSheet(); return; }
