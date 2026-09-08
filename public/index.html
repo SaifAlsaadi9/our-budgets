@@ -351,16 +351,28 @@ input[type="date"].input{max-width:150px;font-family:var(--f-num);font-size:14px
 .gate form{display:flex;flex-direction:column;gap:10px;width:100%;max-width:300px}
 .gate .err{text-align:center;margin:0}
 
-/* ---------- banks ---------- */
-.bank{padding:13px 16px;display:block;width:100%;text-align:left}
-.bank + .bank{border-top:1px solid var(--line-soft)}
-.bank-top{display:flex;align-items:baseline;gap:8px}
-.bank-name{font-size:14.5px;font-weight:600;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bank-foot{display:flex;justify-content:space-between;gap:10px;margin-top:4px;font-size:11.5px;color:var(--ink-3)}
-.picker{max-height:46dvh;overflow-y:auto;border:1px solid var(--line);border-radius:12px;margin-bottom:13px}
-.picker button{display:block;width:100%;text-align:left;padding:11px 13px;font-size:14px}
-.picker button + button{border-top:1px solid var(--line-soft)}
-.picker button:active{background:var(--surface-2)}
+/* ---------- import ---------- */
+.drop{
+  border:1.5px dashed var(--line);border-radius:14px;padding:22px 16px;text-align:center;
+  background:var(--surface-2);margin-bottom:13px;
+}
+.drop p{margin:0;font-size:13px;color:var(--ink-2)}
+.drop input{display:block;margin:10px auto 0;font-size:13px;max-width:100%}
+.tally{display:flex;gap:1px;background:var(--line-soft);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:13px}
+.tally div{flex:1;background:var(--surface);padding:10px 8px;text-align:center}
+.tally b{display:block;font-family:var(--f-num);font-size:19px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.tally span{font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
+.tally .dim b{color:var(--ink-3)}
+.maprow{display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:center;margin-bottom:8px}
+.maprow label{margin:0;white-space:nowrap}
+.maprow select{font-size:14px;padding:8px 10px}
+.sample{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:13px}
+.sample div{display:flex;justify-content:space-between;gap:10px;padding:8px 12px;font-size:12.5px;background:var(--surface)}
+.sample div + div{border-top:1px solid var(--line-soft)}
+.sample .d{color:var(--ink-3);font-family:var(--f-num);flex:0 0 auto}
+.sample .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sample .a{font-family:var(--f-num);font-variant-numeric:tabular-nums;flex:0 0 auto}
+.sample .a.in{color:var(--good)}
 </style>
 </head>
 <body>
@@ -1175,7 +1187,7 @@ function openSettings(){
       CURRENCIES.map(c => '<option value="' + c + '"' + (c === cur ? " selected" : "") + ">" + c + "</option>").join("") +
     "</select></div>" +
     '<div class="grp"><button class="btn wide" data-action="save-settings">Save</button></div>' +
-    '<div class="grp"><button class="btn ghost wide" data-action="open-banks">Bank connections</button></div>' +
+    '<div class="grp"><button class="btn ghost wide" data-action="open-import">Import a statement</button></div>' +
     '<div class="grp"><button class="btn danger wide" data-action="erase" data-armed="0">Erase all data</button></div>' +
     '<p class="hint" style="margin-bottom:0">' + (state.online ? "Synced to your server — open this link on any device." : "Stored on this device only right now.") + "</p>"
   );
@@ -1369,11 +1381,8 @@ function runAction(act){
     toast(left > 0 ? money(left) + " left on " + d.name : d.name + " is cleared.");
   }
 
-  if (a === "open-banks") { openBanksSheet(); return; }
-  if (a === "pick-bank") { openBankPicker("GB"); return; }
-  if (a === "link-bank") { linkBank(act.dataset.name, act.dataset.country); return; }
-  if (a === "sync-banks") { syncBanks(); return; }
-  if (a === "unlink-bank") { unlinkBank(act.dataset.id); return; }
+  if (a === "open-import") { openImportSheet(); return; }
+  if (a === "do-import") { doImport(); return; }
 
   if (a === "edit-pay") { openPayEdit(act.dataset.id, act.dataset.pid); return; }
 
@@ -1583,145 +1592,278 @@ async function pullState(){
   }
 }
 
-/* ---------------- banks ---------------- */
-async function openBanksSheet(){
-  openSheet("<h2>Bank connections</h2><p class=\"hint\">Loading…</p>");
-  let data;
-  try {
-    data = await api("/api/banks/status");
-  } catch (err) {
-    openSheet("<h2>Bank connections</h2><p class=\"hint\">" + esc(err.message) + "</p>");
-    return;
-  }
+/* ---------------- CSV import ---------------- */
 
-  const rows = data.links.length
-    ? '<div class="card" style="margin-bottom:13px">' + data.links.map(l =>
-        '<div class="bank"><div class="bank-top"><span class="bank-name">' + esc(l.bankName) + "</span>" +
-        '<span class="tag' + (l.status === "linked" && !l.expired ? " lent" : "") + '">' + esc(l.label) + "</span></div>" +
-        (l.status === "not_whitelisted"
-          ? '<div class="bank-foot"><span>Whitelist this account in the Enable Banking control panel, then connect again.</span></div>'
-          : '<div class="bank-foot"><span>' + l.accounts + (l.accounts === 1 ? " account" : " accounts") + "</span>" +
-            "<span>" + (l.expiresAt ? "Consent to " + esc(l.expiresAt) : "") + "</span></div>") +
-        '<div class="bank-foot"><span>' + (l.lastSync ? "Synced " + esc(l.lastSync.slice(0, 10)) : "Never synced") + "</span>" +
-        '<button data-action="unlink-bank" data-id="' + esc(l.state) +
-        '" style="color:var(--over);font-size:11.5px;font-weight:600">Remove</button></div></div>'
-      ).join("") + "</div>"
-    : '<p class="hint">No bank connected yet. Connecting one pulls your transactions in automatically.</p>';
-
-  openSheet(
-    "<h2>Bank connections</h2>" + rows +
-    (data.links.some(l => l.status === "linked" && !l.expired)
-      ? '<div class="grp"><button class="btn wide" data-action="sync-banks">Sync now</button></div>' : "") +
-    '<button class="btn ghost wide" data-action="pick-bank">Connect a bank</button>' +
-    '<p class="hint" style="margin:13px 0 0">Access is read-only, and your bank asks you to re-approve it every 90 days.</p>'
-  );
-}
-
-// Revolut's UK and EEA arms are separate institutions, so the country matters.
-const COUNTRIES = [
-  ["GB", "United Kingdom"], ["IE", "Ireland"], ["LT", "Lithuania"],
-  ["FR", "France"], ["DE", "Germany"], ["ES", "Spain"], ["IT", "Italy"],
-  ["NL", "Netherlands"], ["PL", "Poland"], ["PT", "Portugal"],
-  ["SE", "Sweden"], ["FI", "Finland"], ["NO", "Norway"], ["DK", "Denmark"],
+// Merchant strings on statements are noisy: "SAINSBURYS S/MKTS 4021".
+const IMPORT_RULES = [
+  ["tesco","groceries"],["sainsbury","groceries"],["asda","groceries"],["aldi","groceries"],
+  ["lidl","groceries"],["morrisons","groceries"],["waitrose","groceries"],["co-op","groceries"],
+  ["iceland","groceries"],["ocado","groceries"],["marks and spencer","groceries"],
+  ["tfl","transport"],["trainline","transport"],["uber","transport"],["bolt","transport"],
+  ["shell","transport"],["esso","transport"],["parking","transport"],["rail","transport"],
+  ["deliveroo","dining"],["just eat","dining"],["uber eats","dining"],["costa","dining"],
+  ["pret","dining"],["greggs","dining"],["nando","dining"],["mcdonald","dining"],
+  ["starbucks","dining"],["restaurant","dining"],["cafe","dining"],["coffee","dining"],
+  ["netflix","fun"],["spotify","fun"],["disney","fun"],["cinema","fun"],["steam","fun"],
+  ["playstation","fun"],["nintendo","fun"],["apple.com","fun"],
+  ["british gas","bills"],["octopus energy","bills"],["thames water","bills"],
+  ["council tax","bills"],["vodafone","bills"],["virgin media","bills"],["sky","bills"],
+  ["insurance","bills"],["tv licence","bills"],["giffgaff","bills"],
+  ["boots","health"],["pharmacy","health"],["dentist","health"],["gym","health"],["puregym","health"],
+  ["ikea","home"],["b&q","home"],["homebase","home"],["argos","home"],["dunelm","home"],
 ];
-const bankCache = {};
 
-async function openBankPicker(country){
-  country = (country || "GB").toUpperCase();
-  openSheet("<h2>Choose your bank</h2><p class=\"hint\">Loading the list…</p>");
+// Matched at a word boundary, not anywhere: a bare `includes` filed Netflix
+// under transport, because "tfl" sits inside "ne-tfl-ix".
+const RULE_TESTS = IMPORT_RULES.map(([needle, cat]) => [
+  new RegExp("\\b" + needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+  cat,
+]);
 
-  let data;
-  try {
-    data = bankCache[country] || (bankCache[country] = await api("/api/banks/institutions?country=" + country));
-  } catch (err) {
-    openSheet("<h2>Choose your bank</h2><p class=\"hint\">" + esc(err.message) + "</p>");
+function guessCategory(text){
+  const hay = String(text || "").toLowerCase();
+  for (const [re, cat] of RULE_TESTS) {
+    if (re.test(hay) && catById(cat)) return cat;
+  }
+  return catById("other") ? "other" : (state.settings.categories[0] || {}).id || "other";
+}
+
+// Full CSV parse: quoted fields, escaped quotes, embedded commas and newlines.
+function parseCsv(text){
+  const rows = [];
+  let row = [], field = "", quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else quoted = false;
+      } else field += c;
+    } else if (c === '"') quoted = true;
+    else if (c === ",") { row.push(field); field = ""; }
+    else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+    else if (c !== "\r") field += c;
+  }
+  if (field !== "" || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(v => String(v).trim() !== ""));
+}
+
+// Statements use ISO, dd/mm/yyyy or dd-mm-yyyy. UK order is assumed for the
+// ambiguous ones, which is right for every UK bank export.
+function parseCsvDate(v){
+  const s = String(v || "").trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return m[1] + "-" + m[2] + "-" + m[3];
+  m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
+  if (m) {
+    let [, d, mo, y] = m;
+    if (y.length === 2) y = "20" + y;
+    return y + "-" + pad2(mo) + "-" + pad2(d);
+  }
+  const t = Date.parse(s);
+  if (!isNaN(t)) {
+    const d = new Date(t);
+    return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+  }
+  return "";
+}
+
+function parseCsvAmount(v){
+  const s = String(v || "").replace(/[^0-9.,\-()]/g, "").trim();
+  if (!s) return NaN;
+  const negative = /^\(.*\)$/.test(s) || s.includes("-");
+  // "1.234,56" (continental) vs "1,234.56" (UK)
+  let clean = s.replace(/[()\-]/g, "");
+  if (/,\d{2}$/.test(clean) && clean.includes(".")) clean = clean.replace(/\./g, "").replace(",", ".");
+  else clean = clean.replace(/,/g, "");
+  const n = parseFloat(clean);
+  if (isNaN(n)) return NaN;
+  return negative ? -Math.abs(n) : n;
+}
+
+const pick = (headers, names) => {
+  for (const name of names) {
+    const i = headers.findIndex(h => h === name);
+    if (i >= 0) return i;
+  }
+  for (const name of names) {
+    const i = headers.findIndex(h => h.includes(name));
+    if (i >= 0) return i;
+  }
+  return -1;
+};
+
+// Works out which column is which. Revolut, Monzo, Starling and most bank
+// exports are covered; anything else the user corrects in the dropdowns.
+function detectColumns(headers){
+  const h = headers.map(x => String(x).trim().toLowerCase());
+  const out = {
+    date: pick(h, ["completed date", "date completed", "transaction date", "date"]),
+    desc: pick(h, ["description", "counter party", "name", "merchant", "reference", "details", "narrative", "payee"]),
+    amount: pick(h, ["amount", "value"]),
+    paidIn: pick(h, ["paid in", "credit", "money in"]),
+    paidOut: pick(h, ["paid out", "debit", "money out"]),
+    state: pick(h, ["state", "status"]),
+  };
+  // A "Fee" column must never be mistaken for the amount.
+  if (out.amount >= 0 && h[out.amount].includes("fee")) out.amount = -1;
+  return out;
+}
+
+let importData = null;
+
+function readImportRows(){
+  if (!importData) return [];
+  const { rows, cols } = importData;
+  const body = rows.slice(1);
+  const out = [];
+
+  for (const r of body) {
+    // Skip anything the bank hasn't settled yet.
+    if (cols.state >= 0) {
+      const st = String(r[cols.state] || "").trim().toUpperCase();
+      if (st && st !== "COMPLETED" && st !== "SETTLED" && st !== "BOOKED") continue;
+    }
+
+    const date = parseCsvDate(r[cols.date]);
+    if (!date) continue;
+
+    let amount;
+    if (cols.amount >= 0) amount = parseCsvAmount(r[cols.amount]);
+    else {
+      const inAmt = cols.paidIn >= 0 ? parseCsvAmount(r[cols.paidIn]) : NaN;
+      const outAmt = cols.paidOut >= 0 ? parseCsvAmount(r[cols.paidOut]) : NaN;
+      amount = !isNaN(inAmt) && inAmt ? Math.abs(inAmt) : (!isNaN(outAmt) && outAmt ? -Math.abs(outAmt) : NaN);
+    }
+    if (isNaN(amount) || amount === 0) continue;
+
+    const note = cols.desc >= 0 ? String(r[cols.desc] || "").trim().slice(0, 60) : "";
+    const income = amount > 0;
+
+    out.push({
+      id: "csv-" + hash32(date + "|" + amount.toFixed(2) + "|" + note.toLowerCase()),
+      type: income ? "income" : "expense",
+      cat: income ? "" : guessCategory(note),
+      amt: Math.abs(amount),
+      note,
+      date,
+      src: "csv",
+    });
+  }
+  return out;
+}
+
+function hash32(str){
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
+function existingIds(){
+  const seen = new Set();
+  for (const key of Object.keys(state.months)) {
+    for (const t of txnsFor(key)) if (t.id) seen.add(t.id);
+  }
+  return seen;
+}
+
+function openImportSheet(){
+  importData = null;
+  openSheet(
+    "<h2>Import a statement</h2>" +
+    '<div class="drop"><p>Export a CSV statement from your banking app, then choose it here.</p>' +
+    '<input type="file" id="csv-file" accept=".csv,text/csv"></div>' +
+    '<div id="import-body"><p class="hint" style="margin-bottom:0">Revolut: Statements, choose <b>Excel/CSV</b>, pick a date range, then download.</p></div>'
+  );
+  $("csv-file").addEventListener("change", handleCsvFile);
+}
+
+async function handleCsvFile(e){
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+
+  let text;
+  try { text = await file.text(); }
+  catch { $("import-body").innerHTML = '<p class="err">Could not read that file.</p>'; return; }
+
+  const rows = parseCsv(text);
+  if (rows.length < 2) {
+    $("import-body").innerHTML = '<p class="err">That file has no rows in it.</p>';
     return;
   }
 
-  openSheet(
-    "<h2>Choose your bank</h2>" +
-    '<div class="grp"><input class="input" id="bank-search" placeholder="Search — try Revolut" autocomplete="off" aria-label="Search banks"></div>' +
-    '<div class="grp"><label for="bank-country">Country</label><select class="input" id="bank-country">' +
-      COUNTRIES.map(([code, label]) =>
-        '<option value="' + code + '"' + (code === country ? " selected" : "") + ">" + esc(label) + "</option>").join("") +
-    "</select></div>" +
-    '<div class="picker" id="bank-list">' + (data.banks.length
-      ? data.banks.map(b =>
-          '<button data-action="link-bank" data-name="' + esc(b.name) +
-          '" data-country="' + esc(b.country || country) + '">' + esc(b.name) + "</button>").join("")
-      : '<p class="hint" style="padding:12px;margin:0">No banks listed for this country.</p>') + "</div>" +
-    '<p class="hint" id="bank-empty" style="margin:10px 0 0" hidden>Nothing matches that. If your Revolut account was opened outside the UK, switch the country to Lithuania.</p>' +
-    '<p class="hint" style="margin:10px 0 0">You approve access in your own banking app, then come straight back here.</p>'
-  );
-
-  const list = $("bank-list");
-  const empty = $("bank-empty");
-  $("bank-search").addEventListener("input", () => {
-    const q = $("bank-search").value.trim().toLowerCase();
-    let shown = 0;
-    for (const btn of list.querySelectorAll("[data-name]")) {
-      const hit = !q || btn.dataset.name.toLowerCase().includes(q);
-      btn.hidden = !hit;
-      if (hit) shown++;
-    }
-    empty.hidden = shown > 0;
-  });
-  $("bank-country").addEventListener("change", (e) => openBankPicker(e.target.value));
+  importData = { rows, cols: detectColumns(rows[0]) };
+  if (importData.cols.date < 0 || (importData.cols.amount < 0 && importData.cols.paidIn < 0 && importData.cols.paidOut < 0)) {
+    importData.cols.date = importData.cols.date < 0 ? 0 : importData.cols.date;
+  }
+  renderImportPreview();
 }
 
-async function linkBank(bankName, country){
-  try {
-    const r = await api("/api/banks/link", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ bankName, country: country || "GB" }),
+function renderImportPreview(){
+  const { rows, cols } = importData;
+  const headers = rows[0];
+  const parsed = readImportRows();
+  const seen = existingIds();
+  const fresh = parsed.filter(t => !seen.has(t.id));
+  const dupes = parsed.length - fresh.length;
+
+  const options = (selected) =>
+    headers.map((h, i) =>
+      '<option value="' + i + '"' + (i === selected ? " selected" : "") + ">" + esc(String(h).trim() || "Column " + (i + 1)) + "</option>").join("");
+
+  const sample = fresh.slice(0, 3).map(t =>
+    '<div><span class="d">' + esc(t.date) + '</span><span class="n">' + esc(t.note || "—") + "</span>" +
+    '<span class="a' + (t.type === "income" ? " in" : "") + '">' + (t.type === "income" ? "+" : "−") + esc(money(t.amt)) + "</span></div>"
+  ).join("");
+
+  $("import-body").innerHTML =
+    '<div class="tally">' +
+      "<div><b>" + parsed.length + "</b><span>Read</span></div>" +
+      "<div><b>" + fresh.length + "</b><span>New</span></div>" +
+      '<div class="dim"><b>' + dupes + "</b><span>Already in</span></div>" +
+    "</div>" +
+    (fresh.length ? '<div class="sample">' + sample + "</div>" : "") +
+    '<div class="maprow"><label for="map-date">Date</label><select class="input" id="map-date">' + options(cols.date) + "</select></div>" +
+    '<div class="maprow"><label for="map-desc">Description</label><select class="input" id="map-desc">' + options(cols.desc) + "</select></div>" +
+    '<div class="maprow"><label for="map-amt">Amount</label><select class="input" id="map-amt">' + options(cols.amount) + "</select></div>" +
+    (fresh.length
+      ? '<button class="btn wide" style="margin-top:13px" data-action="do-import">Import ' + fresh.length + (fresh.length === 1 ? " entry" : " entries") + "</button>"
+      : '<p class="hint" style="margin:13px 0 0">' + (parsed.length ? "Every row in this file is already imported." : "No rows could be read. Check the column choices above.") + "</p>") +
+    '<p class="hint" style="margin:10px 0 0">Money out becomes an expense and is filed into an envelope automatically. You can correct any of it afterwards.</p>';
+
+  for (const [id, key] of [["map-date", "date"], ["map-desc", "desc"], ["map-amt", "amount"]]) {
+    $(id).addEventListener("change", (ev) => {
+      importData.cols[key] = Number(ev.target.value);
+      if (key === "amount") { importData.cols.paidIn = -1; importData.cols.paidOut = -1; }
+      renderImportPreview();
     });
-    window.location.href = r.link;
-  } catch (err) { toast(err.message); }
+  }
 }
 
-async function syncBanks(){
-  toast("Syncing…");
-  try {
-    const r = await api("/api/banks/sync", { method: "POST" });
-    await pullState();
-    closeSheet();
-    if (r.errors && r.errors.length) toast(r.errors[0]);
-    else toast(r.added ? r.added + (r.added === 1 ? " transaction added" : " transactions added") : "Already up to date.");
-  } catch (err) { toast(err.message); }
-}
+function doImport(){
+  const seen = existingIds();
+  const fresh = readImportRows().filter(t => !seen.has(t.id));
+  if (!fresh.length) { toast("Nothing new to import."); return; }
 
-async function unlinkBank(id){
-  try {
-    await api("/api/banks/status", {
-      method: "DELETE",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ state: id }),
-    });
-    openBanksSheet();
-    toast("Bank removed.");
-  } catch (err) { toast(err.message); }
-}
+  clearExampleTxns();
+  for (const t of fresh) {
+    const key = monthOf(t.date);
+    if (!state.months[key]) state.months[key] = { txns: [] };
+    state.months[key].txns.push(t);
+  }
 
+  // Land on the month the statement actually covers.
+  const months = fresh.map(t => monthOf(t.date)).sort();
+  state.view = months[months.length - 1];
+  ensureMonth(state.view);
+
+  pushState();
+  render();
+  closeSheet();
+  toast(fresh.length + (fresh.length === 1 ? " entry imported" : " entries imported"));
+}
 /* ---------------- start ---------------- */
 pullState();
-
-const params = new URLSearchParams(location.search);
-const linkedFlag = params.get("linked");
-if (linkedFlag) {
-  const why = params.get("why");
-  history.replaceState(null, "", location.pathname);
-  if (linkedFlag === "1") {
-    toast("Bank connected. Pulling transactions…");
-    syncBanks();
-  } else if (why === "whitelist") {
-    toast("That account isn't whitelisted in Enable Banking yet.");
-  } else if (why === "cancelled") {
-    toast("Connection cancelled at the bank.");
-  } else {
-    toast("The bank didn't confirm that connection. Try again.");
-  }
-}
 
 })();
 </script>

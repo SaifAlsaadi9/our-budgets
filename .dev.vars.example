@@ -1,5 +1,0 @@
-# Copy to .dev.vars and fill in. .dev.vars is gitignored — never commit real keys.
-ENABLE_BANKING_APP_ID=""
-# Paste the whole .pem, including the BEGIN/END lines. Newlines may be escaped as \n.
-ENABLE_BANKING_PRIVATE_KEY=""
-APP_PASSWORD=""

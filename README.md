@@ -1,143 +1,116 @@
 # Our Budgets
 
-The budgeting app, self-hosted, with UK bank transactions pulled in automatically
-through Enable Banking (open banking).
+A self-hosted budgeting app for iPhone. Envelopes, debts, monthly review, and
+statement import from a CSV file.
 
-Runs on Cloudflare Pages + Functions + KV. Everything used here is on a free tier.
+Runs on Cloudflare Pages + Functions + KV, entirely on free tiers.
+
+Live at <https://our-budgets.pages.dev>
 
 ---
 
-## What you need to do
+## Why there is no automatic bank link
 
-Five steps. Steps 2–4 are yours because they involve your identity and your
-credentials — the secret keys never go in the code and I never see them.
+There was going to be one. It isn't possible at a sensible price for a UK
+personal account, and that is worth writing down so it isn't re-litigated:
 
-### 1. Put this folder in a Git repo
+- **GoCardless Bank Account Data** closed to new signups in 2025.
+- **Enable Banking** and **open-banking.io** are self-serve and cheap, but their
+  coverage stops at the EEA border. Neither reaches UK institutions.
+- The UK runs its own Open Banking regime requiring FCA registration and eIDAS
+  certificates (EUR 3,000–8,000/year). Providers that absorb that cost charge
+  accordingly: **TrueLayer** GBP 150–300/mo, **Yapily** GBP 200–500/mo,
+  **Plaid** USD 500–2,000/mo minimum. All sales-led, all want a company.
+
+So: CSV import. Free, instant, nothing expires, and a statement export is two
+taps in the Revolut app.
+
+---
+
+## Importing a statement
+
+Settings → **Import a statement** → choose the CSV.
+
+The importer works out which columns are which, previews what it found, and
+imports only rows it hasn't seen before, so re-importing an overlapping file is
+safe. It handles:
+
+- **Revolut** (`Completed Date` / `Description` / `Amount`), skipping pending rows
+- **Barclays / Starling / HSBC** style exports with separate `Paid In` / `Paid Out`
+- ISO (`2026-09-01`) and UK (`01/09/2026`) date formats
+- Quoted fields containing commas, and `1,234.56` amounts
+
+If a column is guessed wrong, the three dropdowns under the preview correct it
+and the preview updates live.
+
+Money out becomes an expense and is filed into an envelope using the merchant
+name. Guesses are frequently wrong on unusual merchants — tap any entry to fix it.
+
+---
+
+## Deploying
+
+Requires Node. From the project root:
 
 ```bash
-git init; git add -A; git commit -m "Initial commit"
+npm install
+npx wrangler pages deploy public --project-name=our-budgets
 ```
 
-(Windows PowerShell 5.1 has no `&&` — use `;` between commands, as above.)
+On Windows PowerShell use `npx.cmd`, and note that `&&` is not a valid separator
+in PowerShell 5.1 — use `;` between commands.
 
-Then create an empty repo on GitHub and push to it.
+### Secrets
 
-### 2. Get Enable Banking credentials
+Set once, by hand, so they never touch the repo:
 
-GoCardless closed Bank Account Data to new signups in 2025. Enable Banking is
-the self-serve replacement: its **Restricted Production** tier is free and is
-designed for exactly this case — reading accounts you own.
+```bash
+npx.cmd wrangler pages secret put APP_PASSWORD --project-name=our-budgets
+```
 
-1. Sign up at <https://enablebanking.com/> and open the Control Panel.
-2. Register an application. Choose **Restricted Production**, and set the
-   redirect URL to `https://YOUR-APP.pages.dev/api/banks/callback`
-   (you'll know the real domain after step 3 — you can come back and edit it).
-3. Download the private key when it is offered. **It is shown once.** The
-   filename is your application ID.
-4. **Whitelist your own accounts** in the control panel (Linked accounts). On
-   Restricted Production the API returns *only* whitelisted accounts — an
-   account you skip here comes back as an empty list and the app will tell you
-   it isn't whitelisted.
+Redeploy after changing a secret — Cloudflare only picks them up on a new build.
 
-Free, read-only, and limited to the accounts you whitelist.
+### KV
 
-### 3. Create the Cloudflare pieces
+The binding lives in `wrangler.toml` (`BUDGET_KV`) and points at the
+`our-budgets` namespace. To recreate it:
 
-1. Sign up at <https://dash.cloudflare.com/> (free).
-2. **Workers & Pages → KV → Create namespace**, name it `our-budgets`.
-   Copy the namespace ID into `wrangler.toml` where it says `REPLACE_ME`.
-3. **Workers & Pages → Create → Pages → Connect to Git**, pick your repo.
-   Build command: leave empty. Build output directory: `public`.
+```bash
+npx wrangler kv namespace create our-budgets
+```
 
-### 4. Set the environment variables
-
-In the Pages project: **Settings → Environment variables → Production**.
-Add all three as **encrypted** (click the lock):
-
-| Name                         | Value                                                    |
-| ---------------------------- | -------------------------------------------------------- |
-| `ENABLE_BANKING_APP_ID`      | your application ID (the private key's filename)          |
-| `ENABLE_BANKING_PRIVATE_KEY` | the whole `.pem` file, pasted including the BEGIN/END lines |
-| `APP_PASSWORD`               | a long password you invent, to open the app               |
-
-Then **Settings → Functions → KV namespace bindings**: bind the variable name
-`BUDGET_KV` to the `our-budgets` namespace.
-
-Redeploy after adding these — Cloudflare only picks them up on a new build.
-
-### 5. Link your bank
-
-Open your app URL, enter the password from `APP_PASSWORD`, then go to the
-**Banks** tab and pick your bank. You are sent to your bank's own app to approve
-read-only access, and back again. Transactions start flowing on the next sync.
+Then paste the returned id into `wrangler.toml`.
 
 ---
 
 ## Security
 
-The app refuses to serve any API route until `APP_PASSWORD` is set — it fails
-closed rather than leaving your bank data on an open URL. The password is checked
-server-side and stored as an HMAC in an HttpOnly cookie; it never reaches the
-page's JavaScript.
+Every `/api` route sits behind a password gate that **fails closed**: with no
+`APP_PASSWORD` set the API returns 503 rather than serving data on an open URL.
+The password is checked server-side and held as an HMAC in an HttpOnly cookie,
+so it never reaches page JavaScript. Login attempts are rate limited per IP.
 
-If you want something stronger, put **Cloudflare Access** in front of the whole
-project (Zero Trust → Access → Applications). Free for up to 50 users and gives
-you real login with email one-time codes or a passkey.
+For something stronger, put **Cloudflare Access** in front of the project
+(Zero Trust → Access → Applications) — free for up to 50 users.
 
-Never commit `.dev.vars` or paste your keys into any file in this repo.
-
----
-
-## Things that will bite you
-
-- **Consent expires every 90 days.** UK Open Banking rule, not ours. The Banks
-  tab shows the expiry date and prompts you to re-approve.
-- **Rate limits.** The free tier allows only a few pulls per account per day, so
-  sync is once-daily by design. Hammering it returns 429.
-- **Read-only.** Balances and transactions. No payments, no changes at the bank.
-- **Categorisation is guesswork.** Bank descriptions are messy
-  (`SAINSBURYS S/MKTS 4021`). Rules live in Settings and you can correct any
-  transaction; corrections teach a new rule.
-- **Only whitelisted accounts appear.** That's what Restricted Production means.
-  Add an account in the control panel first, or the link comes back empty.
-- **First run needs a real check.** The endpoints here follow Enable Banking's
-  documented API, but until it runs against a live account with your key, treat
-  the transaction field mapping in `src/mapping.js` as unverified. The sync
-  endpoint returns the field names of the first transaction it sees so a
-  mismatch is obvious immediately.
-
----
-
-## Local development (optional)
-
-Needs Node.js, which isn't installed on this machine — install it from
-<https://nodejs.org/> if you want to run the app locally. You don't need it to
-deploy: Cloudflare builds in the cloud, so pushing to GitHub is enough.
-
-```bash
-npm install
-cp .dev.vars.example .dev.vars   # then fill in your keys
-npm run dev
-```
-
-`.dev.vars` is gitignored. `npm run dev` serves the site and functions at
-<http://localhost:8788>.
+Never commit `.dev.vars` or any `.pem`; both are gitignored.
 
 ---
 
 ## Layout
 
 ```
-public/index.html      the app itself
-functions/api/         serverless endpoints (Cloudflare Pages Functions)
+public/index.html      the whole app
+public/privacy.html    privacy policy
+public/terms.html      terms of use
+functions/api/
   _middleware.js       password gate — every /api route passes through here
   login.js             exchanges the password for a cookie
-  data.js              loads and saves your budget state
-  banks/institutions   list of UK banks
-  banks/link           starts the consent flow at your bank
-  banks/callback       where the bank sends you back
-  banks/status         which accounts are linked, when consent expires
-  banks/sync           pulls new transactions
-src/enablebanking.js   API client and JWT signing
-src/mapping.js         bank transaction -> app transaction, and categorisation
+  data.js              loads and saves budget state to KV
+wrangler.toml          project config and the KV binding
 ```
+
+State is one JSON document in KV: settings, months, and debts. Small enough that
+splitting it would only add failure modes. The app also keeps a copy in
+`localStorage`, so it still works if the server is unreachable — the header says
+which mode it is in.

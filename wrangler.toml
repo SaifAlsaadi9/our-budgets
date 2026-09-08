@@ -2,6 +2,6 @@ name = "our-budgets"
 compatibility_date = "2026-01-01"
 pages_build_output_dir = "public"
 
-# The KV binding is configured in the Cloudflare dashboard, not here:
-# Pages project -> Settings -> Functions -> KV namespace bindings.
-# Bind the variable name BUDGET_KV to your namespace.
+[[kv_namespaces]]
+binding = "BUDGET_KV"
+id = "754d09b267ea4229abc53e64c9804a7c"
