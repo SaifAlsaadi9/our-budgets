@@ -1075,7 +1075,7 @@ function dailyChart(daily, peak, key){
     const x = padL + i * step + (step - barW) / 2;
     const y = padT + plotH - h;
     const isToday = (i + 1) === todayN;
-    const fill = daily[i] === 0 ? "var(--line)" : isToday ? "var(--accent)" : "color-mix(in srgb, var(--accent) 52%, transparent)";
+    const fill = daily[i] === 0 ? "var(--edge)" : isToday ? "var(--accent)" : "color-mix(in srgb, var(--accent) 58%, transparent)";
     bars += '<rect x="' + x.toFixed(2) + '" y="' + (daily[i] === 0 ? padT + plotH - 1.5 : y).toFixed(2) +
       '" width="' + barW.toFixed(2) + '" height="' + (daily[i] === 0 ? 1.5 : Math.max(1.5, h)).toFixed(2) +
       '" rx="1.4" fill="' + fill + '"></rect>';
@@ -1090,7 +1090,7 @@ function dailyChart(daily, peak, key){
   for (const g of gridVals) {
     const y = padT + plotH - g * plotH;
     grid += '<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + y.toFixed(1) + '" y2="' + y.toFixed(1) +
-      '" stroke="var(--line-soft)" stroke-width="1"></line>' +
+      '" stroke="var(--edge)" stroke-width="1"></line>' +
       '<text x="' + (padL - 6) + '" y="' + (y + 3).toFixed(1) + '" fill="var(--ink-3)" font-size="9" text-anchor="end">' +
       esc(money0(top * g)) + "</text>";
   }
