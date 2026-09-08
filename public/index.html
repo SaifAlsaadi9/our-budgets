@@ -166,6 +166,13 @@ main{display:flex;flex-direction:column}
   text-shadow:0 0 48px var(--accent-glow);
 }
 .hero-amount.neg{color:var(--over);text-shadow:0 0 48px rgba(255,107,138,.4)}
+/* A figure that changed because another device saved shouldn't just
+   silently swap under the reader. */
+.hero-amount.updated{animation:figure-in .55s cubic-bezier(.32,.72,0,1)}
+@keyframes figure-in{
+  0%{opacity:.3;transform:translateY(-3px)}
+  100%{opacity:1;transform:none}
+}
 .hero-sub{margin-top:9px;font-size:13.5px;color:var(--ink-2)}
 .hero-sub b{font-family:var(--f-num);font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink)}
 .meter{
@@ -1831,6 +1838,7 @@ $("gate-form").addEventListener("submit", async (e) => {
     $("gate-pass").value = "";
     $("gate").hidden = true;
     await pullState();
+    scheduleWatch();
   } catch (err) {
     $("gate-err").textContent = "Could not reach the server.";
   }
@@ -1845,7 +1853,7 @@ async function api(path, options){
   return body;
 }
 
-async function pullState(){
+async function pullState(live){
   try {
     const res = await fetch("/api/data");
     if (res.status === 401) { showGate(); return; }
@@ -1872,6 +1880,7 @@ async function pullState(){
       ensureMonth(state.view);
       saveLocal();
       render();
+      if (live) flashUpdated();
     } else {
       state.rev = 0;
       pushState(); // first run: seed the server with what is on this device
@@ -1889,8 +1898,46 @@ function pullIfStale(){
   lastPull = Date.now();
   pullState();
 }
-document.addEventListener("visibilitychange", pullIfStale);
+document.addEventListener("visibilitychange", () => { pullIfStale(); scheduleWatch(); });
 window.addEventListener("focus", pullIfStale);
+
+/* ---------------- live updates ---------------- */
+// Polls the version number only — a few dozen bytes — and pulls the whole
+// budget just when it has actually moved. Idle while the app is in the
+// background, and backs off when the network is unhappy.
+const WATCH_MS = 10000;
+let watchTimer = null;
+let watchDelay = WATCH_MS;
+
+async function watchTick(){
+  if (document.hidden || !state.online) { scheduleWatch(); return; }
+  try {
+    const res = await fetch("/api/rev", { cache: "no-store" });
+    if (res.status === 401) { showGate(); return; }
+    if (!res.ok) throw new Error("rev unavailable");
+    const { rev } = await res.json();
+    watchDelay = WATCH_MS;
+    if (rev !== state.rev) await pullState(true);
+  } catch (e) {
+    watchDelay = Math.min(watchDelay * 2, 120000);
+  }
+  scheduleWatch();
+}
+
+function scheduleWatch(){
+  clearTimeout(watchTimer);
+  if (document.hidden) return;
+  watchTimer = setTimeout(watchTick, watchDelay);
+}
+
+// Numbers arriving from elsewhere shouldn't just silently swap.
+function flashUpdated(){
+  for (const el of document.querySelectorAll(".hero-amount")) {
+    el.classList.remove("updated");
+    void el.offsetWidth;
+    el.classList.add("updated");
+  }
+}
 
 // Safari honours user-scalable=no only in some contexts; these are what
 // actually stop a pinch from zooming the app on iPhone.
@@ -2169,7 +2216,7 @@ function doImport(){
   toast(fresh.length + (fresh.length === 1 ? " entry imported" : " entries imported"));
 }
 /* ---------------- start ---------------- */
-pullState();
+pullState().then(scheduleWatch);
 
 })();
 </script>
