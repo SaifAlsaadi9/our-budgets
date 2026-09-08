@@ -108,10 +108,22 @@ main{display:flex;flex-direction:column}
 /* ---------- top bar ---------- */
 .topbar{
   position:sticky;top:0;z-index:20;
-  margin:0 -16px;padding:0 16px;
+  margin:0 -16px;
+  /* black-translucent runs the web app under the status bar, so the
+     clock and battery sit on top of us unless we reserve their space. */
+  padding:env(safe-area-inset-top) 16px 0;
   background:rgba(8,6,15,.55);
   backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
 }
+.icon-btn{
+  width:34px;height:34px;border-radius:50%;flex:0 0 auto;
+  display:grid;place-items:center;color:var(--ink-2);
+  background:var(--glass);border:1px solid var(--edge);
+  transition:background .16s ease,color .16s ease,transform .1s ease;
+}
+.icon-btn:active{background:var(--glass-2);color:var(--ink);transform:scale(.92)}
+.icon-btn.spin svg{animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 .topbar-row{display:flex;align-items:center;gap:10px;padding:14px 0 6px}
 .wordmark{
   font-family:var(--f-display);font-weight:700;font-size:17px;letter-spacing:-.024em;
@@ -488,6 +500,9 @@ select.input{appearance:none;background-image:none}
   <header class="topbar">
     <div class="topbar-row">
       <div class="wordmark">Our Budgets <span id="syncmark">local</span></div>
+      <button class="icon-btn" id="btn-refresh" aria-label="Refresh from the server">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+      </button>
     </div>
     <div class="monthnav">
       <button id="prev-month" aria-label="Previous month">
@@ -712,24 +727,28 @@ function debounce(key, fn){ clearTimeout(timers[key]); timers[key] = setTimeout(
 
 // The whole state goes up as one document. Writes are debounced so a burst of
 // edits is one request, and localStorage always holds the latest either way.
+async function sendState(){
+  saveLocal();
+  if (!state.online) return;
+  clearTimeout(timers.push);
+  try {
+    const res = await fetch("/api/data", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ settings: state.settings, months: state.months, debts: state.debts }),
+    });
+    if (res.status === 401) { showGate(); return; }
+    if (!res.ok) throw new Error(await res.text());
+    setSync("synced");
+  } catch (e) {
+    setSync("on this device");
+    offlineWarn();
+  }
+}
 function pushState(){
   saveLocal();
   if (!state.online) return;
-  debounce("push", async () => {
-    try {
-      const res = await fetch("/api/data", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ settings: state.settings, months: state.months, debts: state.debts }),
-      });
-      if (res.status === 401) { showGate(); return; }
-      if (!res.ok) throw new Error(await res.text());
-      setSync("synced");
-    } catch (e) {
-      setSync("on this device");
-      offlineWarn();
-    }
-  });
+  debounce("push", sendState);
 }
 const persistSettings = pushState;
 const persistDebts = pushState;
@@ -1446,6 +1465,21 @@ function goMonth(d){
   ensureMonth(next);
   render();
 }
+
+// Flush before pulling: a pending debounced write would otherwise be
+// overwritten by the version already on the server.
+$("btn-refresh").addEventListener("click", async () => {
+  const b = $("btn-refresh");
+  if (b.classList.contains("spin")) return;
+  b.classList.add("spin");
+  try {
+    await sendState();
+    await pullState();
+    toast(state.online ? "Up to date" : "Couldn't reach the server");
+  } finally {
+    b.classList.remove("spin");
+  }
+});
 
 $("btn-add-cat").addEventListener("click", () => openCatSheet(null));
 $("btn-add-debt").addEventListener("click", () => openDebtEdit(null));
