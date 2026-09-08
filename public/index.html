@@ -668,9 +668,20 @@ const CAT_VARS = ["--c1","--c2","--c3","--c4","--c5","--c6","--c7","--c8"];
 /* ---------------- defaults ---------------- */
 const NOW_MONTH = monthOf(todayISO());
 
+// The expected-income setting was removed. Its presence marks a document
+// saved before GBP became the default, so the currency moves across with it.
+let migrated = false;
+function migrateSettings(s){
+  if (s && typeof s.income !== "undefined") {
+    if (!s.currency || s.currency === "USD") s.currency = "GBP";
+    delete s.income;
+    migrated = true;
+  }
+  return s;
+}
+
 const DEFAULT_SETTINGS = {
-  currency: "USD",
-  income: 3200,
+  currency: "GBP",
   categories: [
     { id: "groceries", name: "Groceries",  budget: 450 },
     { id: "dining",    name: "Dining out", budget: 180 },
@@ -760,7 +771,7 @@ function mergeRemote(remote){
 
   state.months = months;
   state.debts = [...debts.values()];
-  state.settings = Object.assign({}, DEFAULT_SETTINGS, remote.settings, state.settings);
+  state.settings = migrateSettings(Object.assign({}, DEFAULT_SETTINGS, remote.settings, state.settings));
 }
 
 async function sendState(retry){
@@ -816,13 +827,13 @@ function setSync(text){ $("syncmark").textContent = text; }
 /* ---------------- money ---------------- */
 let fmt, fmt0;
 function buildFormatters(){
-  const code = (state.settings && state.settings.currency) || "USD";
+  const code = (state.settings && state.settings.currency) || "GBP";
   try {
     fmt = new Intl.NumberFormat(undefined, { style: "currency", currency: code });
     fmt0 = new Intl.NumberFormat(undefined, { style: "currency", currency: code, maximumFractionDigits: 0 });
   } catch (e) {
-    fmt = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" });
-    fmt0 = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+    fmt = new Intl.NumberFormat(undefined, { style: "currency", currency: "GBP" });
+    fmt0 = new Intl.NumberFormat(undefined, { style: "currency", currency: "GBP", maximumFractionDigits: 0 });
   }
 }
 const money = (n) => fmt.format(n || 0);
@@ -991,8 +1002,9 @@ function openKeepSheet(mkey, id, name){
 function renderToday(){
   const key = state.view;
   const { spent, earned, budget } = totals(key);
-  const income = earned > 0 ? earned : (Number(state.settings.income) || 0);
-  const base = income > 0 ? income : budget;
+  // Measured against real income once there is some, otherwise against what
+  // the envelopes add up to. No guessing at a figure the user hasn't given.
+  const base = earned > 0 ? earned : budget;
   const left = base - spent;
   const pct = base > 0 ? clamp(spent / base, 0, 1) : 0;
 
@@ -1000,7 +1012,7 @@ function renderToday(){
   amtEl.textContent = money0(left);
   amtEl.classList.toggle("neg", left < 0);
   $("hero-sub").innerHTML = "<b>" + esc(money0(spent)) + "</b> spent of <b>" + esc(money0(base)) + "</b>" +
-    (earned > 0 ? " logged income" : income > 0 ? " expected income" : " budgeted");
+    (earned > 0 ? " income" : " budgeted");
 
   const meter = $("hero-meter");
   meter.style.width = (pct * 100).toFixed(1) + "%";
@@ -1136,12 +1148,12 @@ function ordinal(n){
 function renderMonth(){
   const key = state.view;
   const { spent, earned, byCat } = totals(key);
-  const income = earned > 0 ? earned : (Number(state.settings.income) || 0);
+  const income = earned;
   const net = income - spent;
   const rate = income > 0 ? Math.round((net / income) * 100) : 0;
 
   $("stats").innerHTML =
-    stat(earned > 0 ? "Income" : "Expected income", money0(income), "") +
+    stat("Income", money0(income), "") +
     stat("Spent", money0(spent), "") +
     stat("Net", (net >= 0 ? "" : "−") + money0(Math.abs(net)).replace("-", ""), net >= 0 ? "good" : "neg") +
     stat("Saved", income > 0 ? rate + "%" : "—", net >= 0 ? "good" : "neg");
@@ -1388,13 +1400,11 @@ function logDebtSideEffect(d, amt, date){
   addTxn({ id: uid(), type: "expense", cat: cat.id, amt: amt, note: d.name, date: date });
 }
 
-const CURRENCIES = ["USD","EUR","GBP","CAD","AUD","NZD","CHF","SEK","NOK","DKK","JPY","CNY","INR","PKR","AED","SAR","EGP","ZAR","NGN","KES","BRL","MXN","SGD","HKD","MYR","PHP","THB","IDR","TRY","PLN","CZK","ILS","KRW"];
+const CURRENCIES = ["GBP","EUR","USD","CAD","AUD","NZD","CHF","SEK","NOK","DKK","JPY","CNY","INR","PKR","AED","SAR","EGP","ZAR","NGN","KES","BRL","MXN","SGD","HKD","MYR","PHP","THB","IDR","TRY","PLN","CZK","ILS","KRW"];
 function openSettings(){
   const cur = state.settings.currency;
   openSheet(
     "<h2>Settings</h2>" +
-    '<div class="grp"><label for="s-income">Expected monthly income</label><input class="input num" id="s-income" inputmode="decimal" value="' + esc(state.settings.income) + '"></div>' +
-    '<p class="hint">Used for the “left to spend” figure until you log real income for a month.</p>' +
     '<div class="grp"><label for="s-cur">Currency</label><select class="input" id="s-cur">' +
       CURRENCIES.map(c => '<option value="' + c + '"' + (c === cur ? " selected" : "") + ">" + c + "</option>").join("") +
     "</select></div>" +
@@ -1735,8 +1745,6 @@ function runAction(act){
   }
 
   if (a === "save-settings") {
-    const inc = parseAmount($("s-income").value);
-    state.settings.income = isFinite(inc) ? inc : 0;
     state.settings.currency = $("s-cur").value;
     persistSettings();
     render();
@@ -1799,7 +1807,7 @@ function ensureMonth(key){ if (!state.months[key]) state.months[key] = { txns: [
 function boot(){
   const local = loadLocal();
   if (local) {
-    state.settings = Object.assign({}, DEFAULT_SETTINGS, local.settings);
+    state.settings = migrateSettings(Object.assign({}, DEFAULT_SETTINGS, local.settings));
     state.months = local.months || {};
     state.debts = Array.isArray(local.debts) ? local.debts : [];
   } else {
@@ -1874,13 +1882,15 @@ async function pullState(live){
       // Nothing changed on the server since our copy — leave local edits alone.
       if (body.rev === state.rev) return;
       state.rev = body.rev;
-      state.settings = Object.assign({}, DEFAULT_SETTINGS, remote.settings);
+      state.settings = migrateSettings(Object.assign({}, DEFAULT_SETTINGS, remote.settings));
       state.months = remote.months || {};
       state.debts = Array.isArray(remote.debts) ? remote.debts : [];
       ensureMonth(state.view);
       saveLocal();
       render();
       if (live) flashUpdated();
+      // Write the upgraded settings back so the old field doesn't linger.
+      if (migrated) { migrated = false; pushState(); }
     } else {
       state.rev = 0;
       pushState(); // first run: seed the server with what is on this device
