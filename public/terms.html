@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terms of Use — Our Budgets</title>
+<style>
+:root{
+  --bg:#EDF0F2; --surface:#FFFFFF; --ink:#141E26; --ink-2:#54646F; --ink-3:#8695A1;
+  --line:#D5DDE3; --accent:#1F5F7A;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0C1216; --surface:#151E24; --ink:#E7EEF2; --ink-2:#9CADB9; --ink-3:#6C7D89;
+    --line:#26333B; --accent:#63B4CE;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box;margin:0}
+body{
+  background:var(--bg);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+  font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased;
+  padding:32px 20px 64px;
+}
+main{max-width:65ch;margin:0 auto}
+h1{font-size:28px;font-weight:700;letter-spacing:-.03em;margin-bottom:6px}
+.sub{color:var(--ink-3);font-size:14px;margin-bottom:28px}
+h2{font-size:17px;font-weight:600;letter-spacing:-.02em;margin:28px 0 8px}
+p,li{color:var(--ink-2)}
+p{margin-bottom:12px}
+ul{margin:0 0 12px 20px}
+li{margin-bottom:6px}
+strong{color:var(--ink);font-weight:600}
+a{color:var(--accent)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:24px 0}
+footer{margin-top:36px;padding-top:18px;border-top:1px solid var(--line);color:var(--ink-3);font-size:13px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Terms of Use</h1>
+  <p class="sub">Our Budgets · last updated 8 September 2026</p>
+
+  <div class="card">
+    <p style="margin:0"><strong>The short version.</strong> A private budgeting tool with one user, its owner. It reads bank transactions to help track spending. It is not a bank, not financial advice, and comes with no warranty.</p>
+  </div>
+
+  <h2>What this is</h2>
+  <p>Our Budgets is a personal, self-hosted budgeting application operated by an individual for their own use. It is not offered to the public, has no other users, and is not a commercial product.</p>
+
+  <h2>Access</h2>
+  <p>Use is restricted to the owner. Access is protected by a password; sharing that password or attempting to access the application without authorisation is not permitted.</p>
+
+  <h2>What it does with bank data</h2>
+  <p>With the owner's consent, given at their own bank, the application retrieves account balances and transaction history through <a href="https://enablebanking.com/">Enable Banking</a>, a regulated account information service provider. Access is <strong>read-only</strong>. The application cannot initiate payments, transfer funds, or alter anything held at the bank.</p>
+  <p>Consent lasts 90 days and can be withdrawn at any time in the application or through the bank's own permissions screen.</p>
+
+  <h2>Not financial advice</h2>
+  <p>Figures shown here — balances, category totals, debt payoff estimates and projected dates — are informational calculations based on the data available and the assumptions entered. They are estimates, not advice, and not a statement of account. Your bank's own records are always authoritative. Do not rely on this application for tax, lending, or any other financial decision without checking the underlying accounts.</p>
+
+  <h2>Accuracy</h2>
+  <p>Transaction data comes from third parties and may be delayed, incomplete, duplicated, or miscategorised. Automatic categorisation is a best guess based on merchant descriptions and is frequently wrong. The owner is responsible for reviewing what is imported.</p>
+
+  <h2>Availability</h2>
+  <p>The application is provided as-is, with no guarantee of uptime or continuity. It depends on services — Cloudflare, Enable Banking, and the bank itself — that may change, rate-limit, or withdraw access at any time. It may stop working without notice.</p>
+
+  <h2>No warranty and no liability</h2>
+  <p>To the fullest extent permitted by law, this application is provided without warranties of any kind, and its operator accepts no liability for any loss arising from its use, including from inaccurate data, lost data, or unavailability.</p>
+
+  <h2>Changes</h2>
+  <p>These terms may be updated at any time. The date at the top reflects the most recent change.</p>
+
+  <h2>Contact</h2>
+  <p>Questions about these terms: <strong>saif.n.alsaadi@gmail.com</strong></p>
+
+  <footer>
+    This document describes a single-user personal application. If it is ever opened to other users, these terms must be rewritten to reflect that.
+  </footer>
+</main>
+</body>
+</html>

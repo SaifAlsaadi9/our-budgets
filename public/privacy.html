@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — Our Budgets</title>
+<style>
+:root{
+  --bg:#EDF0F2; --surface:#FFFFFF; --ink:#141E26; --ink-2:#54646F; --ink-3:#8695A1;
+  --line:#D5DDE3; --accent:#1F5F7A;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0C1216; --surface:#151E24; --ink:#E7EEF2; --ink-2:#9CADB9; --ink-3:#6C7D89;
+    --line:#26333B; --accent:#63B4CE;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box;margin:0}
+body{
+  background:var(--bg);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+  font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased;
+  padding:32px 20px 64px;
+}
+main{max-width:65ch;margin:0 auto}
+h1{font-size:28px;font-weight:700;letter-spacing:-.03em;margin-bottom:6px}
+.sub{color:var(--ink-3);font-size:14px;margin-bottom:28px}
+h2{font-size:17px;font-weight:600;letter-spacing:-.02em;margin:28px 0 8px}
+p,li{color:var(--ink-2)}
+p{margin-bottom:12px}
+ul{margin:0 0 12px 20px}
+li{margin-bottom:6px}
+strong{color:var(--ink);font-weight:600}
+a{color:var(--accent)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:24px 0}
+footer{margin-top:36px;padding-top:18px;border-top:1px solid var(--line);color:var(--ink-3);font-size:13px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Privacy Policy</h1>
+  <p class="sub">Our Budgets · last updated 8 September 2026</p>
+
+  <div class="card">
+    <p style="margin:0"><strong>The short version.</strong> This is a personal budgeting app used by one person — its owner. It reads their own bank transactions so they can budget. Nothing is sold, shared, or sent anywhere else.</p>
+  </div>
+
+  <h2>Who runs this</h2>
+  <p>Our Budgets is a private, self-hosted application operated by an individual for their own household finances. It is not a commercial service, it has no other users, and it is not open for public sign-up.</p>
+
+  <h2>What it holds</h2>
+  <ul>
+    <li><strong>Bank transaction data</strong> — dates, amounts, and merchant descriptions from accounts the owner has explicitly linked.</li>
+    <li><strong>Account balances</strong> for those same accounts.</li>
+    <li><strong>Budget information the owner types in</strong> — spending limits, categories, debts, and notes.</li>
+  </ul>
+  <p>No name, address, date of birth, or card number is requested or stored. Bank credentials are never seen by this application: authentication happens on the bank's own website or app.</p>
+
+  <h2>How bank data is obtained</h2>
+  <p>Account information is retrieved through <a href="https://enablebanking.com/">Enable Banking</a>, a regulated account information service provider, under UK and EU open banking rules. Access is <strong>read-only</strong> — this application cannot move money, make payments, or change anything at the bank.</p>
+  <p>Access requires the owner's explicit consent at their bank, and that consent expires after 90 days unless renewed.</p>
+
+  <h2>Where it is stored</h2>
+  <p>Data is stored in a private Cloudflare Workers KV namespace belonging to the owner, reachable only through this application, which is protected by a password. Cloudflare acts as the hosting provider; Enable Banking acts as the account information provider. There are no other processors, no analytics, no advertising, and no tracking cookies. The only cookie set is the one that keeps the owner signed in.</p>
+
+  <h2>How long it is kept</h2>
+  <p>Transactions are kept until the owner deletes them. The app has an "Erase all data" control that removes stored budget and transaction data. Removing a bank connection stops any further data being retrieved.</p>
+
+  <h2>Who it is shared with</h2>
+  <p>Nobody. The data is not sold, rented, published, used for advertising or profiling, or disclosed to third parties, except where disclosure is required by law.</p>
+
+  <h2>Your rights</h2>
+  <p>The owner is the only data subject and holds their data directly: they can view, export (as CSV), correct, or delete all of it from within the application at any time, and can withdraw bank access at any time either in the app or through their bank's own permissions screen.</p>
+
+  <h2>Contact</h2>
+  <p>Questions about this policy: <strong>saif.n.alsaadi@gmail.com</strong></p>
+
+  <footer>
+    This document describes a single-user personal application. If it is ever opened to other users, this policy must be rewritten to reflect that.
+  </footer>
+</main>
+</body>
+</html>

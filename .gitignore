@@ -1,0 +1,6 @@
+node_modules/
+.claude/
+.dev.vars
+.wrangler/
+.DS_Store
+*.log

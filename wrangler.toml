@@ -1,0 +1,9 @@
+name = "our-budgets"
+compatibility_date = "2026-01-01"
+pages_build_output_dir = "public"
+
+# Create this namespace in the Cloudflare dashboard (Workers & Pages -> KV),
+# then paste its ID here. The binding name must stay BUDGET_KV.
+[[kv_namespaces]]
+binding = "BUDGET_KV"
+id = "REPLACE_ME"
